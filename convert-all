@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+
+source ~/.term_color_shell_constants
+set -e
+
+mkdir -p dst
+
+say() {
+	echo -en "${BBlue}"
+	echo "$*" | while read line; do
+		echo "[convert-all] [$(date)] $line"
+	done
+	echo -en "${Color_Off}"
+}
+
+for gfn in "$1"/*.tar; do
+	rm -rf tmp
+	mkdir tmp
+	say "Processing: $gfn"
+	fn=$gfn
+
+	tar -C tmp -xf $fn 2>/dev/null
+	fn=$(basename $fn .tar)
+	bsf=$PWD/tmp/$fn
+	# Remove remnants.
+	rm -rf $bsf/Render $bsf/Anchor $bsf/Volume
+	rmdir $bsf/AUDIO_TS || true
+	mv $bsf/Video_ts $bsf/VIDEO_TS 2>/dev/null || true
+	if [[ "$(ls $bsf)" != VIDEO_TS ]]; then
+		say Do not know how to process
+		ls -lah "$bsf" | grep -Ev 'VIDEO_TS.?$'
+		continue
+	fi
+	rm -f $bsf/VIDEO_TS/*.scn
+	if ! rm $bsf/VIDEO_TS/*.{BUP,IFO}; then
+		say Missing files
+		continue
+	fi
+	rm -f $bsf/VIDEO_TS/{VIDEO_TS.VOB,VTS_01_0.VOB}
+	if [[ "$(ls $bsf/VIDEO_TS/*.VOB)" != "$(ls $bsf/VIDEO_TS/*)" ]]; then
+		say Extra files
+		ls -lah "$bsf/VIDEO_TS" | grep -Ev '[.]VOB$'
+		continue
+	fi
+
+	# Add ls to automatically sort file names.
+	source_files="$(ls $bsf/VIDEO_TS/*.VOB)"
+	destination_file="dst/$fn.mkv"
+	say "$source_files"
+	say "-> $destination_file"
+	./convert-one "$destination_file" $source_files
+	say "-> succeeded, renaming TAR archive to .converted"
+	mv "$gfn" "${gfn}.converted"
+done
+
+rm -rf tmp

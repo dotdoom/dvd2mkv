@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+
+source ~/.term_color_shell_constants
+set -e
+
+out="$1"
+shift
+
+say() {
+	echo -e "${BRed}[convert-one] [$(date)] $*${Color_Off}"
+}
+
+say ----------------------------------------------------
+say                      STARTING
+say ----------------------------------------------------
+
+src="concat:$(echo "$@" | tr ' ' '|')"
+
+say "from: $src"
+say "to  : $out"
+
+rm -f "$out"
+
+# https://developers.google.com/media/vp9
+mode=copy
+
+case $mode in
+	copy)
+		ffmpeg -fflags +genpts \
+			-i "$src" \
+			-hide_banner \
+			-c:v copy \
+			-c:a libvorbis \
+			"$out"
+		;;
+
+	q)
+		ffmpeg -i "$src" -hide_banner \
+			-c:v vp9 -b:v 0 \
+			-quality good -speed 0 \
+			-lossless 1 \
+			-c:a libvorbis \
+			"$out"
+		;;
+
+	vod)
+		say '[ PASS 1 ]'
+		crf=23
+		ffmpeg -i "$src" -hide_banner -b:v 1024k \
+			-minrate 512k -maxrate 1485k -tile-columns 1 -g 240 \
+			-threads 4 \
+			-quality good -crf "$crf" -c:v libvpx-vp9 -c:a libopus \
+			-pass 1 -speed 4 "$out" && \
+		say '[ PASS 2 ]'
+		ffmpeg -i "$src" -hide_banner -b:v 1024k \
+			-minrate 512k -maxrate 1485k -tile-columns 1 -g 240 \
+			-threads 4 \
+			-quality good -crf "$crf" -c:v libvpx-vp9 -c:a libopus \
+			-pass 2 -speed 2 -y "$out"
+		;;
+	*)
+		say "Unknown mode: $mode"
+		exit 1
+esac
+
+say '[ DONE ]'
